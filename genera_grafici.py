@@ -8,13 +8,13 @@ import seaborn as sns
 warnings.filterwarnings("ignore")
 
 # --- 1. CONFIGURAZIONE PERCORSI ---
-# Otteniamo la cartella di lavoro corrente per garantire flessibilità di esecuzione
+# Otteniamo la cartella di lavoro corrente
 cartella_base = os.path.dirname(os.path.abspath(__file__)) if '__file__' in locals() else os.getcwd()
 
 percorso_auto = os.path.join(cartella_base, "Tabella_Risultati_Ki67.csv")
 percorso_man = os.path.join(cartella_base, "misure.csv")
 
-print("📥 Lettura e sincronizzazione dei file in corso...")
+print("Lettura e sincronizzazione dei file in corso...")
 
 # --- 2. CARICAMENTO E PULIZIA DEI DATI ---
 # Controllo preliminare di esistenza dei file
@@ -41,12 +41,12 @@ df_man['Ki67_Manuale'] = pd.to_numeric(df_man['Positive %'], errors='coerce')
 df_merged = pd.merge(df_auto[['Image', 'Ki67_Auto']], df_man[['Image', 'Ki67_Manuale']], on='Image')
 df_merged = df_merged.dropna(subset=['Ki67_Auto', 'Ki67_Manuale']).reset_index(drop=True)
 
-print(f"✅ Sincronizzazione completata: trovate {len(df_merged)} immagini in comune.")
+print(f" Sincronizzazione completata: trovate {len(df_merged)} immagini in comune.")
 
 # Esportazione della tabella comparativa unita per consultazione immediata
 percorso_export = os.path.join(cartella_base, "Confronto_Ki67_Merged.csv")
 df_merged.to_csv(percorso_export, index=False, sep=';', decimal=',')
-print("💾 Tabella comparativa unita salvata in: Confronto_Ki67_Merged.csv")
+print(" Tabella comparativa unita salvata in: Confronto_Ki67_Merged.csv")
 
 # --- 3. IMPOSTAZIONE GRAFICA GENERALE ---
 sns.set_theme(style="whitegrid")
@@ -84,12 +84,12 @@ percorso_box_man = os.path.join(cartella_base, "Grafico_Boxplot_Manuale.png")
 plt.tight_layout()
 plt.savefig(percorso_box_man, dpi=300, bbox_inches='tight')
 plt.close(fig)
-print("📊 Generato e salvato: Grafico_Boxplot_Manuale.png")
+print(" Generato e salvato: Grafico_Boxplot_Manuale.png")
 
 # ==============================================================================
 # GRAFICO 3: ISTOGRAMMA / BARPLOT FASCE CLINICHE A CONFRONTO
 # ==============================================================================
-# Suddivisione diagnostica: 0-3%, 3-20%, 20-50%, >50%
+# Suddivisione fasce: 0-3%, 3-20%, 20-50%, >50%
 limiti_fasce = [-1, 3, 20, 50, 105]
 etichette_fasce = ['0-3%', '3-20%', '20-50%', '>50%']
 
@@ -127,6 +127,6 @@ percorso_fasce = os.path.join(cartella_base, "Istogramma_Fasce_Cliniche_Confront
 plt.tight_layout()
 plt.savefig(percorso_fasce, dpi=300, bbox_inches='tight')
 plt.close(fig)
-print("📊 Generato e salvato: Istogramma_Fasce_Cliniche_Confronto.png")
+print(" Generato e salvato: Istogramma_Fasce_Cliniche_Confronto.png")
 
-print("\n🎉 L'analisi comparativa è stata completata e i file grafici sono pronti all'uso!")
+print("\n L'analisi comparativa è stata completata e i file grafici sono pronti all'uso!")
