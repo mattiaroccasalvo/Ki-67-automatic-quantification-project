@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore")
 # Stampa intestazione personalizzata
 print("\n" * 2) 
 print("=" * 57)
-print(" 🤖 OTTIMIZZAZIONE PARAMETRI PER KI-67 ")
+print("  OTTIMIZZAZIONE PARAMETRI PER KI-67 ")
 print("=" * 57)
 print("\n")
 
@@ -40,7 +40,7 @@ try:
         df_misure = pd.read_csv(percorso_csv_misure, sep=',')
     valori_reali_qupath = dict(zip(df_misure['Image'], df_misure['Positive %']))
 except Exception as e:
-    print(f"❌ Errore : File 'misure.csv' non trovato o non valido. Controlla il percorso.\n{e}")
+    print(f" Errore : File 'misure.csv' non trovato o non valido. Controlla il percorso.\n{e}")
     exit()
 
 print("⏳ Inizializzazione Rete Neurale e caricamento cache immagini in corso...")
@@ -67,7 +67,7 @@ for nome_file in files_immagini:
         }
 
 if not immagini_cache:
-    print("❌ Errore: Nessuna immagine corrisponde ai nomi presenti nel file 'misure.csv'.")
+    print(" Errore: Nessuna immagine corrisponde ai nomi presenti nel file 'misure.csv'.")
     exit()
 
 # =========================================================================
@@ -159,7 +159,7 @@ class ArbitroStallo:
             self.tentativi_senza_miglioramento += 1
 
         if self.tentativi_senza_miglioramento >= self.pazienza_massima:
-            print(f"\n🛑 STALLO RAGGIUNTO! Nessun miglioramento da {self.pazienza_massima} tentativi.")
+            print(f"\n STALLO RAGGIUNTO! Nessun miglioramento da {self.pazienza_massima} tentativi.")
             study.stop()
 
 # =========================================================================
@@ -171,7 +171,7 @@ if __name__ == "__main__":
     study = optuna.create_study(direction='minimize')
     arbitro_paziente = ArbitroStallo(pazienza_massima=15)
     
-    print(f"\n🚀 RICERCA INIZIATA SU {len(immagini_cache)} IMMAGINI DI TEST...")
+    print(f"\n RICERCA INIZIATA SU {len(immagini_cache)} IMMAGINI DI TEST...")
     
     # Esecuzione Ottimizzazione
     study.optimize(obiettivo, n_trials=100, callbacks=[arbitro_paziente])
@@ -183,7 +183,7 @@ if __name__ == "__main__":
     print("\n" + "=" * 50)
     print(" OTTIMIZZAZIONE COMPLETATA ")
     print(f" Errore Medio Minimo (Scarto Ki-67): {miglior_trial.value:.2f}%")
-    print("✅ Parametri ottenuti:")
+    print(" Parametri ottenuti:")
     for chiave, valore in parametri_ideali.items():
         print(f"   -> {chiave}: {valore}")
     print("=" * 50)
