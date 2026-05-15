@@ -25,7 +25,7 @@ warnings.filterwarnings("ignore")
 larghezza_schermo = 183
 print("\n" * 2) 
 print("=" * larghezza_schermo)
-print(" 🔬 PIPELINE KI-67: PATCHES FINALI ".center(larghezza_schermo, '='))
+print("  PIPELINE KI-67: PATCHES FINALI ".center(larghezza_schermo, '='))
 print("=" * larghezza_schermo)
 print("\n")
 
@@ -43,7 +43,7 @@ dimensione_tile = 2000
 percorso_json = os.path.join(cartella_base, "parametri_ottimali.json")
 
 if os.path.exists(percorso_json):
-    print("📥 Trovato file JSON: Caricamento parametri in corso...")
+    print(" Trovato file JSON: Caricamento parametri in corso...")
     with open(percorso_json, 'r') as file_json:
         parametri_ottimali = json.load(file_json)
         
@@ -51,7 +51,7 @@ if os.path.exists(percorso_json):
     nms_tresh = parametri_ottimali.get('nms_tresh', 0.40)
     sensibilita_dab = parametri_ottimali.get('sensibilita_dab', 0.80)
 else: 
-    print("⚠️ File JSON non trovato. Uso parametri di sicurezza.")
+    print(" File JSON non trovato. Uso parametri di sicurezza.")
     prob_tresh = 0.50; nms_tresh = 0.40; sensibilita_dab = 0.80
 
 # =========================================================================
@@ -329,7 +329,7 @@ if len(riepilogo_batch) > 0:
     
     percorso_csv = os.path.join(cartella_base, "Tabella_Risultati_Ki67.csv")
     df_riepilogo.to_csv(percorso_csv, index=False, sep=';', decimal=',')
-    print(f"\n✅ Report salvato con Media Pesata Totale: {media_pesata_totale:.2f}%")
+    print(f"\n Report salvato con Media Pesata Totale: {media_pesata_totale:.2f}%")
 
 tempo_fine = time.time()
 tempo_impiegato = tempo_fine - tempo_inizio_totale
