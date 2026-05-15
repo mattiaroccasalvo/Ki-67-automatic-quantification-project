@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import spearmanr
 
-print("🔄 Avvio dell'Analisi di Correlazione Statistica (Spearman)...")
+print(" Avvio dell'Analisi di Correlazione Statistica (Spearman)...")
 
 # --- 1. LETTURA E PULIZIA DATI ALGORITMO (IL TUO CODICE PYTHON) ---
 # Puntiamo al file CSV generato dal tuo script!
@@ -52,12 +52,12 @@ df_unito = pd.merge(df_alg[['slide_id', 'Ki67_Algoritmo']],
                     df_man[['slide_id', 'Ki67_Manuale']], 
                     on='slide_id', how='inner')
 
-print(f"✅ Vetrini combinati con successo: {len(df_unito)}\n")
+print(f" Vetrini combinati con successo: {len(df_unito)}\n")
 
-# --- 4. CALCOLO STATISTICO E AUTO-VALUTAZIONE (SPEARMAN) ---
+# --- 4. CALCOLO STATISTICO E VALUTAZIONE (SPEARMAN) ---
 rho_stat, p_value = spearmanr(df_unito['Ki67_Manuale'], df_unito['Ki67_Algoritmo'])
 
-print("📊 RISULTATI STATISTICI:")
+print(" RISULTATI STATISTICI:")
 print(f"Correlazione di Spearman (rho) calcolata: {rho_stat:.4f}")
 
 # Valutazione logica dell'indice rho
@@ -90,10 +90,8 @@ plt.plot([0, max_val], [0, max_val], linestyle='--', color='gray', label='Accord
 
 # --- ARROTONDAMENTO E CONTROLLO SOGLIA P-VALUE ---
 # Impostiamo un "pavimento" (floor) a 0.001. 
-# Se il p-value reale è inferiore (es. 10^-25), verrà automaticamente forzato a 0.001.
 p_visualizzato = max(p_value, 0.01)
 
-# Generiamo la stringa visualizzando il classico simbolo '<' per i valori forzati
 if p_value < 0.01:
     testo_stat = f"Spearman \u03c1 = {rho_stat:.2f}\np-value = {p_visualizzato:.2f}"
 else:
