@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
-print("🔄 Preparazione dati per il Bland-Altman Plot in corso...")
+print(" Preparazione dati per il Bland-Altman Plot in corso...")
 
 # --- 1. LETTURA E PULIZIA DEI DATI ---
 # A. Dati Manuali (QuPath)
@@ -20,7 +20,7 @@ df_codice = df_codice[df_codice['Nome_Vetrino'].astype(str).str.contains('MEDIA'
 df_codice['slide_id'] = df_codice['Nome_Vetrino'].str.replace('.tif', '', regex=False)
 df_codice = df_codice.drop_duplicates(subset=['slide_id'], keep='last')
 
-# --- 1.5 UNIONE DELLE TABELLE (Questo pezzo mancava!) ---
+# --- 1.5 UNIONE DELLE TABELLE ---
 # Uniamo le tabelle per i vetrini in comune
 df_confronto = pd.merge(df_manuale[['slide_id', 'Positive %']], 
                         df_codice[['slide_id', 'Ki67_LI_Percentuale']], 
@@ -35,11 +35,9 @@ df_confronto['Codice_Num'] = df_confronto['Ki67_LI_Percentuale'].astype(str).str
 # 2. Calcoliamo la differenza provvisoria
 df_confronto['Differenza_Provvisoria'] = df_confronto['Codice_Num'] - df_confronto['Manuale_Num']
 
-# 3. 🛑 IL FILTRO: Manteniamo SOLO i vetrini dove l'errore è tra -50% e +50%
-# Il comando .abs() guarda il valore assoluto, così scarta sia i > +50 che i < -50
 df_confronto = df_confronto[df_confronto['Differenza_Provvisoria'].abs() <= 50]
 
-print(f"⚠️ Vetrini rimasti dopo aver escluso gli errori > 50%: {len(df_confronto)}")
+print(f" Vetrini rimasti dopo aver escluso gli errori > 50%: {len(df_confronto)}")
 
 # 4. Estraiamo i dati filtrati per il grafico
 manuale = df_confronto['Manuale_Num']
@@ -61,13 +59,13 @@ print(f"✅ Bias ricalcolato senza valori estremi: {bias:.2f}%")
 sns.set_theme(style="whitegrid")
 plt.figure(figsize=(10, 6))
 
-# Disegniamo i pallini per ogni vetrino (Usiamo un viola per differenziarlo)
+# Disegniamo i pallini per ogni vetrino
 sns.scatterplot(x=media_valori, y=differenza, s=100, alpha=0.8, color="#9159b6", edgecolor='black')
 
 # Linea dello ZERO (Accordo perfetto: nessuna differenza)
 plt.axhline(0, color='black', linestyle='-', linewidth=1.5)
 
-# Linea del BIAS (Errore medio del tuo codice)
+# Linea del BIAS (Errore medio del codice)
 plt.axhline(bias, color='red', linestyle='--', linewidth=2, label=f'Bias Medio: {bias:.2f}%')
 
 # Linee dei LIMITI DI CONFIDENZA (+/- 1.96 Deviazioni Standard)
@@ -88,4 +86,4 @@ plt.tight_layout()
 cartella_destinazione = r"C:\Users\rocca\Desktop\corso progetto\PYTHON_TEST"
 percorso_immagine = os.path.join(cartella_destinazione, "Bland_Altman_Algoritmo_vs_Manuale.png")
 plt.savefig(percorso_immagine, dpi=300)
-print(f"✅ Grafico generato e salvato in: {percorso_immagine}")
+print(f" Grafico generato e salvato in: {percorso_immagine}")
