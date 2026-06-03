@@ -9,6 +9,7 @@ import time
 import shutil
 import json
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.mixture import GaussianMixture
 from scipy.stats import binned_statistic_2d
 from scipy.ndimage import gaussian_filter, binary_fill_holes
@@ -25,7 +26,7 @@ warnings.filterwarnings("ignore")
 larghezza_schermo = 183
 print("\n" * 2) 
 print("=" * larghezza_schermo)
-print("  PIPELINE KI-67: PATCHES FINALI ".center(larghezza_schermo, '='))
+print(" 🔬 PIPELINE KI-67: PATCHES FINALI ".center(larghezza_schermo, '='))
 print("=" * larghezza_schermo)
 print("\n")
 
@@ -43,7 +44,7 @@ dimensione_tile = 2000
 percorso_json = os.path.join(cartella_base, "parametri_ottimali.json")
 
 if os.path.exists(percorso_json):
-    print(" Trovato file JSON: Caricamento parametri in corso...")
+    print("📥 Trovato file JSON: Caricamento parametri in corso...")
     with open(percorso_json, 'r') as file_json:
         parametri_ottimali = json.load(file_json)
         
@@ -51,7 +52,7 @@ if os.path.exists(percorso_json):
     nms_tresh = parametri_ottimali.get('nms_tresh', 0.40)
     sensibilita_dab = parametri_ottimali.get('sensibilita_dab', 0.80)
 else: 
-    print(" File JSON non trovato. Uso parametri di sicurezza.")
+    print("⚠️ File JSON non trovato. Uso parametri di sicurezza.")
     prob_tresh = 0.50; nms_tresh = 0.40; sensibilita_dab = 0.80
 
 # =========================================================================
@@ -73,11 +74,18 @@ cartella_overlays = os.path.join(cartella_base, "Overlays_Cellule")
 if os.path.exists(cartella_overlays): shutil.rmtree(cartella_overlays)
 os.makedirs(cartella_overlays)
 
+cartella_matrici = os.path.join(cartella_base, "Matrici_Numpy")
+if os.path.exists(cartella_matrici): shutil.rmtree(cartella_matrici)
+os.makedirs(cartella_matrici)
+
 print("1. Inizializzazione AI (StarDist)...")
 model = StarDist2D.from_pretrained('2D_versatile_he')
 
 riepilogo_batch = []
+dati_cellule_globali = [] # <--- NUOVA LISTA PER IL CSV FINALE 
+
 files = [f for f in os.listdir(cartella_immagini) if f.endswith(estensione_file)]
+#files = files[:5]  # <--- RIGA DI TEST: Analizza solo i primi 5 vetrini
 print(f"Trovate {len(files)} immagini.\n")
 tempo_inizio_totale = time.time()
 
@@ -98,23 +106,16 @@ for i, nome_file in enumerate(files, 1):
         # --- CALCOLO SOGLIE DINAMICHE AUTOMATICO ---
         img_thumb = img[::10, ::10, :]
         
-        # Estraiamo parametri dell'immagine corrente per calcolare le soglie
         distanza_colore_thumb = np.linalg.norm(img_thumb - bianco_puro, axis=2)
         luce_thumb = np.mean(img_thumb, axis=2)
         std_thumb = np.std(img_thumb, axis=2)
         
         try:
-            # 1. Distanza dal bianco (tessuto vs sfondo)
             soglia_distanza = threshold_otsu(distanza_colore_thumb) * 0.8
-            
-            # 2. Soglia Luminosità (sostituisce il 248)
             otsu_luce = threshold_otsu(luce_thumb)
             soglia_luce_max = otsu_luce + ((255 - otsu_luce) * 0.6)
-            
-            # 3. Soglia Grigio/Polvere (sostituisce il 2)
             soglia_std_min = threshold_otsu(std_thumb) * 0.3
         except:
-            # valori di sicurezza: se l'immagine è tutta bianca o corrotta, usa i valori fissi
             soglia_distanza = 20
             soglia_luce_max = 248
             soglia_std_min = 2.0
@@ -128,15 +129,12 @@ for i, nome_file in enumerate(files, 1):
                 x_fine = min(x + dimensione_tile, larghezza)
                 tile_img = img[y:y_fine, x:x_fine, :]
                 
-                # --- 1. FILTRO ARTEFATTI ADATTIVO ---
                 if tile_img.size == 0 or np.mean(tile_img) > soglia_luce_max: 
                     continue
                 
-                # Scarta la polvere in base alla vividezza reale di questo specifico vetrino
                 if np.mean(np.std(tile_img, axis=2)) < soglia_std_min:
                     continue
                 
-                # --- 2. MASCHERA TESSUTO LOCALE ---
                 distanza_colore_tile = np.linalg.norm(tile_img - bianco_puro, axis=2)
                 maschera_tile = distanza_colore_tile > soglia_distanza 
                 
@@ -146,7 +144,6 @@ for i, nome_file in enumerate(files, 1):
                 if not np.any(maschera_tile): 
                     continue
                 
-                # --- 3. INTELLIGENZA ARTIFICIALE ---
                 stains = color.separate_stains(tile_img, color.hdx_from_rgb)
                 dab_channel = stains[:, :, 1]
                 
@@ -161,11 +158,12 @@ for i, nome_file in enumerate(files, 1):
                     'labels': labels
                 })
                 
-                # --- 4. ESTRAZIONE DATI ---
                 for cellula in measure.regionprops(labels, intensity_image=dab_channel):
                     cy, cx = int(cellula.centroid[0]), int(cellula.centroid[1])
                     if maschera_tile[cy, cx]:
+                        # AGGIUNTO NOME_TILE PER POTER FARE L'ANALISI DI RIPLEY DOPO
                         dati_cellule.append({
+                            'Nome_Tile': nome_file, 
                             'X': x + cx, 
                             'Y': y + cy, 
                             'Intensita_DAB': cellula.mean_intensity,
@@ -173,11 +171,9 @@ for i, nome_file in enumerate(files, 1):
                             'Indice_Blocco': indice_blocco
                         })
         
-        # --- ELABORAZIONE FINALE DEL VETRINO ---
         if len(dati_cellule) > 0:
             df = pd.DataFrame(dati_cellule) 
             
-            # --- CLASSIFICAZIONE CELLULE: GMM ---
             if len(df) > 2:
                 intensita = df['Intensita_DAB'].values.reshape(-1, 1)
                 gmm = GaussianMixture(n_components=2, random_state=42)
@@ -202,6 +198,9 @@ for i, nome_file in enumerate(files, 1):
             soglia_sensibile = soglia_base_gmm * sensibilita_dab
             df['Positiva'] = (df['Intensita_DAB'] > soglia_sensibile).astype(int)
             
+            # --- SALVATAGGIO DEI DATI DEL VETRINO NELLA LISTA GLOBALE ---
+            dati_cellule_globali.extend(df.to_dict(orient='records'))
+            
             tot = len(df)
             pos = df['Positiva'].sum()
             ki67_li = (pos / tot * 100) if tot > 0 else 0
@@ -212,7 +211,6 @@ for i, nome_file in enumerate(files, 1):
                 "Ki67_LI_Percentuale": round(ki67_li, 2)
             })
             
-            # --- VISUALIZZAZIONE OVERLAYS CELLULARI E HEATMAPS ---
             overlay_contorni = np.zeros((altezza, larghezza, 4), dtype=np.uint8)
 
             for i, blocco in enumerate(risultati_segmentazione):
@@ -221,20 +219,23 @@ for i, nome_file in enumerate(files, 1):
                 if df_blocco.empty: continue
                 
                 confini_base = find_boundaries(labels, mode='thick')
-                confini_tile = morphology.binary_dilation(confini_base, morphology.disk(2))
+                confini_tile = morphology.binary_dilation(confini_base, morphology.disk(4))
                 
                 max_id = labels.max()
+                
                 mappa_r = np.zeros(max_id + 1, dtype=np.uint8)
+                mappa_g = np.zeros(max_id + 1, dtype=np.uint8) 
                 mappa_b = np.zeros(max_id + 1, dtype=np.uint8)
                 
                 id_pos = df_blocco[df_blocco['Positiva'] == 1]['ID_Cellula'].values
                 id_neg = df_blocco[df_blocco['Positiva'] == 0]['ID_Cellula'].values
                 
-                mappa_r[id_pos] = 255 
-                mappa_b[id_neg] = 255 
+                mappa_r[id_pos] = 0; mappa_g[id_pos] = 255; mappa_b[id_pos] = 0
+                mappa_r[id_neg] = 255; mappa_g[id_neg] = 30; mappa_b[id_neg] = 0 
                 
                 colori_tile = np.zeros((labels.shape[0], labels.shape[1], 4), dtype=np.uint8)
                 colori_tile[:, :, 0] = mappa_r[labels]
+                colori_tile[:, :, 1] = mappa_g[labels] 
                 colori_tile[:, :, 2] = mappa_b[labels]
                 
                 maschera_valide = np.isin(labels, df_blocco['ID_Cellula'].values)
@@ -245,55 +246,76 @@ for i, nome_file in enumerate(files, 1):
                 
                 overlay_contorni[blocco['y']:blocco['y_fine'], blocco['x']:blocco['x_fine']] = colori_tile
 
-            # DISEGNO OVERLAY
             fig_ov, ax_ov = plt.subplots(figsize=(12, 10))
             ax_ov.imshow(img)
             ax_ov.imshow(overlay_contorni)
             ax_ov.set_title(f"Evidenziazione Cellule - {nome_file} (Ki-67: {ki67_li:.2f}%)", fontsize=14)
             ax_ov.axis('off')
-            legend_elements = [Line2D([0], [0], color='red', lw=2, label='Positive'),
-                               Line2D([0], [0], color='blue', lw=2, label='Negative')]
+            
+            legend_elements = [Line2D([0], [0], color='lime', lw=4, label='Positive'),
+                               Line2D([0], [0], color='red', lw=4, label='Negative')]
             ax_ov.legend(handles=legend_elements, loc='upper right')
             nome_overlay = nome_file.replace(estensione_file, "_Evidenziazione_Cellule.png")
             plt.savefig(os.path.join(cartella_overlays, nome_overlay), dpi=300, bbox_inches='tight')
             plt.close(fig_ov)
             
-           # --- GENERAZIONE HEATMAP FINALE ---
-            nx_bins = int(larghezza / dimensione_quadrato)
-            ny_bins = int(altezza / dimensione_quadrato)
+            dimensione_quadrato_visiva = dimensione_quadrato  
+            dimensione_quadrato_stat = 200                      
             
-            grid_count, x_edge, y_edge, _ = binned_statistic_2d(df['X'], df['Y'], None, statistic='count', bins=[nx_bins, ny_bins], range=[[0, larghezza], [0, altezza]])
-            grid_pos, _, _, _ = binned_statistic_2d(df['X'], df['Y'], df['Positiva'], statistic='sum', bins=[nx_bins, ny_bins], range=[[0, larghezza], [0, altezza]])
+            nx_stat = int(larghezza / dimensione_quadrato_stat)
+            ny_stat = int(altezza / dimensione_quadrato_stat)
             
-            grid_count = grid_count.T; grid_pos = grid_pos.T
-            
-            # Maschera Visiva per le mappe
-            mask_visiva = grid_count > 0
-            mask_visiva = morphology.binary_closing(mask_visiva, morphology.disk(raggio_chiusura_vis))
-            mask_visiva = morphology.remove_small_objects(mask_visiva, min_size=area_minima_isola_vis)
-            if espansione_tessuto_vis > 0: 
-                mask_visiva = morphology.binary_dilation(mask_visiva, morphology.disk(espansione_tessuto_vis))
-            
-            count_smooth = gaussian_filter(grid_count, sigma=forza_sfumatura)
-            pos_smooth = gaussian_filter(grid_pos, sigma=forza_sfumatura)
-            
-            LI_grid = np.divide(pos_smooth, count_smooth, out=np.zeros_like(pos_smooth), where=count_smooth > 0.01)
-            LI_grid[~mask_visiva] = np.nan
+            if nx_stat > 1 and ny_stat > 1:
+                grid_count_stat, _, _, _ = binned_statistic_2d(df['X'], df['Y'], None, statistic='count', bins=[nx_stat, ny_stat], range=[[0, larghezza], [0, altezza]])
+                grid_pos_stat, _, _, _ = binned_statistic_2d(df['X'], df['Y'], df['Positiva'], statistic='sum', bins=[nx_stat, ny_stat], range=[[0, larghezza], [0, altezza]])
+                
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    LI_grid_stat = np.divide(grid_pos_stat.T, grid_count_stat.T, out=np.zeros_like(grid_pos_stat.T, dtype=float), where=grid_count_stat.T > 0)
+                
+                np.save(os.path.join(cartella_matrici, nome_file.replace(estensione_file, "_matrix.npy")), LI_grid_stat)
 
-            X, Y = np.meshgrid((x_edge[:-1] + x_edge[1:]) / 2, (y_edge[:-1] + y_edge[1:]) / 2)
-
-            fig, ax = plt.subplots(figsize=(12, 10))
-            ax.set_facecolor('white')
-            heatmap = ax.pcolormesh(X, Y, LI_grid, cmap='turbo', vmin=0, vmax=0.6, shading='auto')
-            ax.set_aspect('equal'); ax.invert_yaxis() 
-            ax.set_title(f"Ki-67 LI Map - {nome_file}", fontsize=16)
-            ax.set_xticks([]); ax.set_yticks([])
-            fig.colorbar(heatmap, ax=ax, orientation='horizontal', pad=0.05, fraction=0.046)
+            nx_vis = int(larghezza / dimensione_quadrato_visiva)
+            ny_vis = int(altezza / dimensione_quadrato_visiva)
             
-            plt.savefig(os.path.join(cartella_heatmaps, nome_file.replace(estensione_file, "_Heatmap_LI.png")), dpi=300, bbox_inches='tight')
-            plt.close(fig)          
+            if nx_vis > 1 and ny_vis > 1:
+                grid_count_vis, x_edge, y_edge, _ = binned_statistic_2d(df['X'], df['Y'], None, statistic='count', bins=[nx_vis, ny_vis], range=[[0, larghezza], [0, altezza]])
+                grid_pos_vis, _, _, _ = binned_statistic_2d(df['X'], df['Y'], df['Positiva'], statistic='sum', bins=[nx_vis, ny_vis], range=[[0, larghezza], [0, altezza]])
+                
+                grid_count_vis = grid_count_vis.T
+                grid_pos_vis = grid_pos_vis.T
+                
+                mask_visiva = grid_count_vis > 0
+                mask_visiva = morphology.binary_closing(mask_visiva, morphology.disk(raggio_chiusura_vis))
+                mask_visiva = morphology.remove_small_objects(mask_visiva, min_size=area_minima_isola_vis)
+                if espansione_tessuto_vis > 0: 
+                    mask_visiva = morphology.binary_dilation(mask_visiva, morphology.disk(espansione_tessuto_vis))
+                
+                count_smooth = gaussian_filter(grid_count_vis, sigma=forza_sfumatura)
+                pos_smooth = gaussian_filter(grid_pos_vis, sigma=forza_sfumatura)
+                
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    LI_grid_visiva = np.divide(pos_smooth, count_smooth, out=np.zeros_like(pos_smooth, dtype=float), where=count_smooth > 0.01)
+                    
+                LI_grid_visiva[~mask_visiva] = np.nan
+
+                X, Y = np.meshgrid((x_edge[:-1] + x_edge[1:]) / 2, (y_edge[:-1] + y_edge[1:]) / 2)
+
+                fig, ax = plt.subplots(figsize=(12, 10))
+                ax.set_facecolor('white')
+                heatmap = ax.pcolormesh(X, Y, LI_grid_visiva, cmap='turbo', vmin=0, vmax=0.6, shading='auto')
+                ax.set_aspect('equal'); ax.invert_yaxis() 
+                ax.set_title(f"Ki-67 LI Map - {nome_file}", fontsize=16)
+                ax.set_xticks([]); ax.set_yticks([])
+                
+                divider = make_axes_locatable(ax)
+                cax = divider.append_axes("right", size="3%", pad=0.1)
+                fig.colorbar(heatmap, cax=cax, orientation='vertical')
+                
+                plt.savefig(os.path.join(cartella_heatmaps, nome_file.replace(estensione_file, "_Heatmap_LI.png")), dpi=300, bbox_inches='tight')
+                plt.close(fig)          
  
-            
         else:
             print("   -> Nessuna cellula rilevata. Vetrino vuoto.")
             
@@ -303,6 +325,15 @@ for i, nome_file in enumerate(files, 1):
 # =========================================================================
 # 6. ESPORTAZIONE DATI GLOBALI
 # =========================================================================
+# --- NUOVO: SALVATAGGIO DELLE COORDINATE DELLE CELLULE PER RIPLEY ---
+if dati_cellule_globali:
+    df_globale = pd.DataFrame(dati_cellule_globali)
+    nome_csv_celle = os.path.join(cartella_base, "Dati_Cellule_Complessivi_Tiles_Ki67.csv")
+    # Esportiamo solo le colonne utili alla spazialità per non appesantire il file
+    colonne_export = ['Nome_Tile', 'X', 'Y', 'Intensita_DAB', 'Positiva']
+    df_globale[colonne_export].to_csv(nome_csv_celle, index=False)
+    print(f"[*] File coordinate cellule salvato per Analisi Ripley in: {nome_csv_celle}")
+
 if len(riepilogo_batch) > 0:
     df_riepilogo = pd.DataFrame(riepilogo_batch)
     
@@ -329,7 +360,7 @@ if len(riepilogo_batch) > 0:
     
     percorso_csv = os.path.join(cartella_base, "Tabella_Risultati_Ki67.csv")
     df_riepilogo.to_csv(percorso_csv, index=False, sep=';', decimal=',')
-    print(f"\n Report salvato con Media Pesata Totale: {media_pesata_totale:.2f}%")
+    print(f"\n✅ Report salvato con Media Pesata Totale: {media_pesata_totale:.2f}%")
 
 tempo_fine = time.time()
 tempo_impiegato = tempo_fine - tempo_inizio_totale
