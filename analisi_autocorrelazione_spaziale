@@ -1,0 +1,154 @@
+import os
+import numpy as np
+import pandas as pd
+import libpysal
+from esda.moran import Moran
+import warnings
+
+warnings.filterwarnings("ignore")
+
+# =========================================================================
+# 1. CONFIGURAZIONE PATH E PARAMETRI - KI-67
+# =========================================================================
+cartella_base = r"C:\Users\rocca\Desktop\corso progetto\PYTHON_TEST"
+percorso_csv_dati = os.path.join(cartella_base, "Dati_Cellule_Complessivi_Tiles_Ki67.csv")
+colonna_analisi = 'Positiva' 
+
+percorso_export = os.path.join(cartella_base, "Report_Statistica_Moran_KNN_Ki67.csv")
+
+# =========================================================================
+# 2. FUNZIONE: MORAN'S I SU GRAFO KNN (Dato Binario)
+# =========================================================================
+def calcola_moran_knn_binario(x_coords, y_coords, valori_binari):
+    if len(x_coords) < 10:
+        return np.nan, np.nan, "Dati Insufficienti (<10 cellule)"
+
+    if np.var(valori_binari) <= 1e-8:
+        return np.nan, np.nan, "Varianza Nulla (Tessuto omogeneo o 0% Ki-67)"
+
+    coordinate = np.column_stack((x_coords, y_coords))
+    
+    try:
+        pesi_knn = libpysal.weights.KNN.from_array(coordinate, k=8)
+        pesi_knn.transform = 'r' 
+        
+        moran = Moran(valori_binari, pesi_knn, permutations=9999)
+        p_val_empirico = moran.p_sim
+        
+        if p_val_empirico < 0.05:
+            if moran.I > 0.3:
+                classificazione = "Forte Clustering Proliferativo (Hot-Spot Ki-67)"
+            elif moran.I > 0.1:
+                classificazione = "Clustering Moderato"
+            elif moran.I < -0.1:
+                classificazione = "Dispersione / Scacchiera"
+            else:
+                classificazione = "Rumore Strutturale"
+        else:
+            classificazione = "Distribuzione Casuale delle cellule positive"
+            
+        return moran.I, p_val_empirico, classificazione
+        
+    except Exception as e:
+        return np.nan, np.nan, f"Errore Matematico: {e}"
+
+# =========================================================================
+# 3. ESECUZIONE SUI VETRINI
+# =========================================================================
+print("\n" + "=" * 80)
+print(" 🔬 AVVIO ANALISI SPAZIALE: KI-67 (MORAN KNN BINARIO) ".center(80, '='))
+print("=" * 80 + "\n")
+
+try:
+    df_completo = pd.read_csv(percorso_csv_dati)
+except FileNotFoundError:
+    print(f"❌ File non trovato: {percorso_csv_dati}. Esegui prima la pipeline Ki-67.")
+    exit()
+
+nomi_tiles = df_completo['Nome_Tile'].unique() if 'Nome_Tile' in df_completo.columns else ["Tassello_Unico"]
+print(f"Trovati {len(nomi_tiles)} tasselli.\n")
+
+risultati_statistici = []
+
+for tile in nomi_tiles:
+    df_tile = df_completo[df_completo['Nome_Tile'] == tile] if 'Nome_Tile' in df_completo.columns else df_completo
+        
+    x_coords = df_tile['X_Tile'].values if 'X_Tile' in df_tile.columns else df_tile['X'].values
+    y_coords = df_tile['Y_Tile'].values if 'Y_Tile' in df_tile.columns else df_tile['Y'].values
+    valori = df_tile[colonna_analisi].values
+    
+    indice_i, p_val, classificazione = calcola_moran_knn_binario(x_coords, y_coords, valori)
+    
+    stringa_pval = "< 0.001" if (not np.isnan(p_val) and p_val == 0.0) else (f"{p_val:.4f}" if not np.isnan(p_val) else "N/A")
+        
+    risultati_statistici.append({
+        "Nome_Tile": tile,
+        "Cellule_Totali": len(x_coords),
+        "Percentuale_Ki67": round((valori.sum() / len(valori)) * 100, 1),
+        "Morans_I_Ki67": round(indice_i, 4) if not np.isnan(indice_i) else "N/A",
+        "P_Value": stringa_pval,
+        "Struttura_Spaziale": classificazione
+    })
+    
+    if np.isnan(indice_i):
+        print(f"   -> ⚠️ {tile}: {classificazione}")
+    else:
+        print(f"   -> {tile} | Moran's I: {indice_i:.3f} | p-value: {stringa_pval} | {classificazione}")
+
+# =========================================================================
+# 4. ESPORTAZIONE REPORT FINALE E METRICHE PER LA TESI
+# =========================================================================
+if risultati_statistici:
+    df_knn = pd.DataFrame(risultati_statistici)
+    
+    # --- Calcolo Statistiche Accademiche ---
+    casi_validi = df_knn[df_knn['Morans_I_Ki67'] != "N/A"].copy()
+    casi_validi['P_Value_Num'] = casi_validi['P_Value'].apply(lambda x: 0.0 if str(x).startswith('<') else float(x))
+    casi_validi['Morans_I_Num'] = casi_validi['Morans_I_Ki67'].astype(float)
+    
+    # Consideriamo "Significativi" solo i veri Hot-Spot confermati (p < 0.05 e Moran > 0.1)
+    casi_significativi_veri = casi_validi[(casi_validi['P_Value_Num'] < 0.05) & (casi_validi['Morans_I_Num'] > 0.1)]
+    
+    num_significativi = len(casi_significativi_veri)
+    totale_validi = len(casi_validi)
+    percentuale_significativi = (num_significativi / totale_validi * 100) if totale_validi > 0 else 0
+    
+    media_clustering = casi_significativi_veri['Morans_I_Num'].mean() if num_significativi > 0 else 0
+    
+    # --- Creazione delle Righe di Riepilogo per il CSV ---
+    riga_vuota = {col: "" for col in df_knn.columns}
+    
+    riga_conteggio = {
+        "Nome_Tile": "VETRINI SIGNIFICATIVI (HOT-SPOT)",
+        "Cellule_Totali": "-",
+        "Percentuale_Ki67": "-",
+        "Morans_I_Ki67": "-",
+        "P_Value": "-",
+        "Struttura_Spaziale": f"{num_significativi} su {totale_validi} ({percentuale_significativi:.1f}%)"
+    }
+    
+    riga_media = {
+        "Nome_Tile": "MEDIA MORAN'S I (Solo Significativi)",
+        "Cellule_Totali": "-",
+        "Percentuale_Ki67": "-",
+        "Morans_I_Ki67": round(media_clustering, 4) if num_significativi > 0 else "N/A",
+        "P_Value": "-",
+        "Struttura_Spaziale": "-"
+    }
+    
+    # Concatenazione ed Esportazione
+    df_knn = pd.concat([df_knn, pd.DataFrame([riga_vuota, riga_conteggio, riga_media])], ignore_index=True)
+    df_knn.to_csv(percorso_export, index=False, sep=';', decimal=',')
+    
+    # Stampa a Schermo
+    print("\n" + "=" * 80)
+    print("✅ ANALISI COMPLETATA - DATI PRONTI PER LA TESI")
+    print("-" * 80)
+    print(f"🔹 Tasselli Validati : {totale_validi}")
+    print(f"🔹 Hot-Spots di Ki-67 confermati (p < 0.05) : {num_significativi} ({percentuale_significativi:.1f}%)")
+    
+    if num_significativi > 0:
+        print(f"📈 Indice Moran Medio (Solo aree confermate): {media_clustering:.3f}")
+        
+    print(f"\n💾 Report statistico salvato in: {os.path.basename(percorso_export)}")
+    print("=" * 80)
